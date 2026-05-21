@@ -265,4 +265,48 @@ export class GamesService {
     await this.findOne(id);
     return this.prisma.game.delete({ where: { id } });
   }
+
+  async getRecentDuels() {
+    return this.prisma.game.findMany({
+      where: { gameModeId: 1 }, // DUEL uniquement
+      orderBy: { createdAt: 'desc' },
+      take: 20, // on prend 20, le front calculera les slots
+      include: this.includeAll,
+    });
+  }
+
+  async getLastMatchPerPlayer() {
+    const players = await this.prisma.player.findMany({
+      select: { id: true, name: true },
+    });
+
+    const result: Record<number, { opponents: string[]; win: boolean }> = {};
+
+    for (const player of players) {
+      const game = await this.prisma.game.findFirst({
+        where: {
+          gameModeId: 1,
+          status: 'FINISHED',
+          teams: { some: { players: { some: { playerId: player.id } } } },
+        },
+        orderBy: { finishedAt: 'desc' },
+        include: this.includeAll,
+      });
+
+      if (!game) continue;
+
+      const myTeam = game.teams.find((t) =>
+        t.players.some((tp: any) => tp.playerId === player.id),
+      );
+      const otherTeam = game.teams.find((t) => t.id !== myTeam?.id);
+      const won = game.winnerTeamId === myTeam?.id;
+
+      result[player.id] = {
+        opponents: otherTeam?.players.map((tp: any) => tp.player.name) ?? [],
+        win: won,
+      };
+    }
+
+    return result;
+  }
 }

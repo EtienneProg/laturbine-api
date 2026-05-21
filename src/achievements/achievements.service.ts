@@ -220,4 +220,12 @@ export class AchievementsService {
       },
     });
   }
+
+  async getGrades() {
+    return this.prisma.achievement.findMany({
+      where: { category: 'GRADE' },
+      orderBy: { threshold: 'asc' },
+      select: { key: true, name: true, icon: true, threshold: true },
+    });
+  }
 }
