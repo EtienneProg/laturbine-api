@@ -6,10 +6,14 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePlayerDto } from './dto/create-player.dto';
 import { UpdatePlayerDto } from './dto/update-player.dto';
+import { AchievementsService } from '../achievements/achievements.service';
 
 @Injectable()
 export class PlayersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private achievements: AchievementsService,
+  ) {}
 
   async findAll() {
     return this.prisma.player.findMany({
@@ -60,10 +64,16 @@ export class PlayersService {
 
   async update(id: number, dto: UpdatePlayerDto) {
     await this.findOne(id);
-    return this.prisma.player.update({
+    const updated = this.prisma.player.update({
       where: { id },
       data: dto,
     });
+
+    if (dto.elo !== undefined) {
+      await this.achievements.checkDuelAchievements(id);
+    }
+
+    return updated;
   }
 
   async findByDiscordId(discordId: string) {
