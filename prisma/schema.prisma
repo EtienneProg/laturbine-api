@@ -1,0 +1,194 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────
+// GameMode — table fixe avec seed
+// ID fixe : 1=DUEL, 2=VAMPIRE, 3=HUNGER_GAMES
+// ─────────────────────────────────────────
+
+model GameMode {
+  id          Int      @id // fixe : 1, 2, 3
+  key         String   @unique // "DUEL", "VAMPIRE", "HUNGER_GAMES"
+  name        String // "Duel", "Vampire", "Hunger Games"
+  description String?
+  icon        String? // "⚔️", "🧛", "🏹"
+  teamNames   String[] // ["Équipe 1", "Équipe 2"] | ["Vampires", "Villageois"] | []
+  hasElo      Boolean  @default(false) // true uniquement pour DUEL
+  hasTeams    Boolean  @default(true) // false pour HUNGER_GAMES
+
+  games Game[]
+}
+
+// ─────────────────────────────────────────
+// Player
+// ─────────────────────────────────────────
+
+model Player {
+  id         Int      @id @default(autoincrement())
+  name       String   @unique
+  discordId  String   @unique
+  discordTag String
+  elo        Int      @default(1500)
+  wins       Int      @default(0) // uniquement duels
+  losses     Int      @default(0) // uniquement duels
+  avatarUrl  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  registrations Registration[]
+  eloHistory    EloHistory[]
+  teamPlayers   TeamPlayer[]
+  achievements  PlayerAchievement[]
+}
+
+// ─────────────────────────────────────────
+// Session & Inscriptions
+// ─────────────────────────────────────────
+
+model Session {
+  id        Int           @id @default(autoincrement())
+  date      String
+  status    SessionStatus @default(OPEN)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  registrations Registration[]
+  games         Game[]
+}
+
+model Registration {
+  registeredAt DateTime @default(now())
+
+  playerId  Int
+  sessionId Int
+  player    Player  @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  session   Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@id([playerId, sessionId])
+}
+
+// ─────────────────────────────────────────
+// Game — remplace Duel, supporte tous les modes
+// ─────────────────────────────────────────
+
+model Game {
+  id         Int        @id @default(autoincrement())
+  status     GameStatus @default(ONGOING)
+  createdAt  DateTime   @default(now())
+  finishedAt DateTime?
+
+  sessionId  Int
+  gameModeId Int
+  session    Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  gameMode   GameMode @relation(fields: [gameModeId], references: [id])
+
+  // Uniquement pour DUEL
+  winnerTeamId Int?
+  eloHistory   EloHistory[]
+
+  // Pour DUEL et VAMPIRE uniquement
+  teams Team[]
+}
+
+model Team {
+  id   Int    @id @default(autoincrement())
+  name String // "Équipe 1", "Vampires", etc. — copié depuis GameMode.teamNames
+
+  gameId  Int
+  game    Game         @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  players TeamPlayer[]
+}
+
+model TeamPlayer {
+  id Int @id @default(autoincrement())
+
+  teamId   Int
+  playerId Int
+  team     Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  player   Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, playerId])
+}
+
+model EloHistory {
+  id        Int      @id @default(autoincrement())
+  eloBefore Int
+  eloAfter  Int
+  delta     Int
+  createdAt DateTime @default(now())
+
+  playerId Int
+  gameId   Int
+  player   Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  game     Game   @relation(fields: [gameId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────────────────────
+// Achievements
+// ─────────────────────────────────────────
+
+model Achievement {
+  id          Int                 @id @default(autoincrement())
+  key         String              @unique
+  name        String
+  description String
+  icon        String
+  category    AchievementCategory
+  threshold   Int?
+  isAuto      Boolean             @default(true)
+
+  playerAchievements PlayerAchievement[]
+}
+
+model PlayerAchievement {
+  id         Int       @id @default(autoincrement())
+  progress   Int       @default(0)
+  unlockedAt DateTime?
+
+  playerId      Int
+  achievementId Int
+  player        Player      @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  achievement   Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+
+  @@unique([playerId, achievementId])
+}
+
+model DiscordMessage {
+  id        Int      @id @default(autoincrement())
+  type      String
+  refId     Int
+  messageId String
+  channelId String
+  createdAt DateTime @default(now())
+
+  @@unique([type, refId])
+}
+
+// ─────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────
+
+enum SessionStatus {
+  OPEN
+  ACTIVE
+  CLOSED
+}
+
+enum GameStatus {
+  ONGOING
+  FINISHED
+}
+
+enum AchievementCategory {
+  GRADE
+  DUEL
+  VAMPIRE
+  HUNGER_GAMES
+  SPECIAL
+}
